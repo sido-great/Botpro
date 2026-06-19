@@ -800,7 +800,7 @@
         </div>
         <div class="input-row">
           <span class="input-label">App ID</span>
-          <input class="inp" type="text" value="33AvIKWXvHvaPDyquZjKq" readonly style="flex:1;opacity:.7">
+          <input class="inp" type="text" value="1089" readonly style="flex:1;opacity:.7">
         </div>
         <div style="margin-top:4px">
           <button class="btn btn-primary btn-full" onclick="connectDeriv()">🚀 Connect Account</button>
@@ -921,7 +921,7 @@ function switchBotTab(tab, el) {
 
 function switchImportTab(tab, el) {
   ['xml','html','paste'].forEach(t => {
-    document.getElementById('importTab-'+t).classList.toggle('hidden', t !== tab);
+    document.getElementById('import Tab-'+t).classList.toggle('hidden', t !== tab);
   });
   el.closest('.tab-bar').querySelectorAll('.tab-item').forEach(e => e.classList.remove('active'));
   el.classList.add('active');
@@ -965,7 +965,7 @@ function connectDeriv() {
   let settled = false;
 
   try {
-    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+STATE.appId);
+    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089'+STATE.appId);
     STATE.ws = ws;
 
     const failTimeout = setTimeout(() => {
@@ -1156,7 +1156,6 @@ function simulateBotTrade() {
     market: mkt, dir, stake, payout, win
   });
 }
-
 function updateBotStats() {
   document.getElementById('liveTradeCount').textContent = STATE.botTrades;
   const p = STATE.botProfit;
