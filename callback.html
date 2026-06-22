@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Connecting… | Sido Pro FX</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    background:#0A0E1A; color:#F1F5F9;
+    font-family:'Inter',sans-serif;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .wrap { text-align:center; padding:32px; max-width:380px; }
+  .spinner {
+    width:48px; height:48px; margin:0 auto 24px;
+    border:3px solid rgba(0,229,255,.15);
+    border-top-color:#00E5FF;
+    border-radius:50%;
+    animation:spin 0.9s linear infinite;
+  }
+  .spinner.error { border-top-color:#EF4444; animation:none; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  h1 { font-size:18px; font-weight:800; margin-bottom:8px; background:linear-gradient(135deg,#00E5FF,#7C3AED); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+  p { font-size:13px; color:#94A3B8; line-height:1.6; }
+  .err-box { background:#111827; border:1px solid rgba(239,68,68,.3); border-radius:14px; padding:16px; margin-top:16px; font-size:12px; color:#F87171; text-align:left; word-break:break-word; display:none; }
+  .btn-back { display:inline-block; margin-top:20px; padding:10px 24px; background:linear-gradient(135deg,#00E5FF,#7C3AED); color:#fff; text-decoration:none; border-radius:10px; font-weight:700; font-size:13px; display:none; }
+  .icon { font-size:40px; margin-bottom:16px; display:none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="spinner" id="spinner"></div>
+    <div class="icon" id="icon">⚠️</div>
+    <h1 id="title">Connecting your account…</h1>
+    <p id="msg">Please wait while we securely complete your login with Deriv.</p>
+    <div class="err-box" id="errBox"></div>
+    <a href="index.html" class="btn-back" id="backBtn">← Back to App</a>
+  </div>
+
+<script>
+/* ═══════════════════════════════════════════
+   CONFIG — must match index.html exactly
+═══════════════════════════════════════════ */
+const CONFIG = {
+  APP_ID: '33zVRzX5cIO694SzJtNFB',
+  TOKEN_URL: 'https://auth.deriv.com/oauth2/token',
+  REDIRECT_URI: window.location.origin + window.location.pathname
+};
+
+function showError(message, detail) {
+  document.getElementById('spinner').style.display = 'none';
+  document.getElementById('icon').style.display = 'block';
+  document.getElementById('title').textContent = 'Connection failed';
+  document.getElementById('msg').textContent = message;
+  document.getElementById('backBtn').style.display = 'inline-block';
+  if (detail) {
+    const box = document.getElementById('errBox');
+    box.style.display = 'block';
+    box.textContent = detail;
+  }
+}
+
+async function handleCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const returnedState = params.get('state');
+  const error = params.get('error');
+  const errorDescription = params.get('error_description');
+
+  // Case 1: Deriv returned an OAuth error (user denied, invalid client, etc.)
+  if (error) {
+    sessionStorage.setItem('db_oauth_error', errorDescription || error);
+    showError('Deriv reported an error during login.', errorDescription || error);
+    setTimeout(() => { window.location.href = 'index.html'; }, 2500);
+    return;
+  }
+
+  // Case 2: No code present — invalid access to this page directly
+  if (!code) {
+    showError('No authorization code was received. Please start the login process again from the app.');
+    return;
+  }
+
+  // Case 3: Validate state to prevent CSRF
+  const expectedState = sessionStorage.getItem('db_pkce_state');
+  const codeVerifier = sessionStorage.getItem('db_pkce_verifier');
+
+  if (!expectedState || !codeVerifier) {
+    showError('Your session expired or this page was opened in a new tab. Please restart login from the app.');
+    return;
+  }
+  if (returnedState !== expectedState) {
+    showError('Security check failed (state mismatch). For your protection, this login attempt was rejected.');
+    return;
+  }
+
+  // Case 4: Exchange the authorization code + PKCE verifier for an access token
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: CONFIG.APP_ID,
+      code: code,
+      code_verifier: codeVerifier,
+      redirect_uri: CONFIG.REDIRECT_URI
+    });
+
+    const res = await fetch(CONFIG.TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString()
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.access_token) {
+      const detail = data.error_description || data.error || `HTTP ${res.status}`;
+      showError('Could not exchange the authorization code for an access token.', detail);
+      return;
+    }
+
+    // Success — store token for index.html to pick up
+    const expiresInMs = (data.expires_in ? data.expires_in * 1000 : 3600 * 1000);
+    sessionStorage.setItem('db_access_token', data.access_token);
+    sessionStorage.setItem('db_token_expiry', String(Date.now() + expiresInMs - 30000)); // 30s safety margin
+    if (data.refresh_token) {
+      sessionStorage.setItem('db_refresh_token', data.refresh_token);
+    }
+    // Clean up one-time PKCE values
+    sessionStorage.removeItem('db_pkce_verifier');
+    sessionStorage.removeItem('db_pkce_state');
+
+    document.getElementById('title').textContent = 'Connected!';
+    document.getElementById('msg').textContent = 'Redirecting you back to the app…';
+    setTimeout(() => { window.location.href = 'index.html'; }, 600);
+
+  } catch (e) {
+    showError('A network error occurred while completing login. Please check your connection and try again.', e.message);
+  }
+}
+
+handleCallback();
+</script>
+</body>
+</html>
